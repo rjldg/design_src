@@ -95,6 +95,8 @@ void loop() {
   if (temperature < 0) {
     DIGIT[0] = segG;
     temperature = -(temperature - 1);  // Absolute value
+  } else if (temperature >= 100) {
+    DIGIT[0] = charArray[((int)temperature) / 100];
   } else {
     DIGIT[0] = 0;
   }
