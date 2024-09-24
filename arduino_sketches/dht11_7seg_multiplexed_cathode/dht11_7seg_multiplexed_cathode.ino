@@ -1,33 +1,33 @@
 #include <DHT.h>
 
-#define DHTPIN 14     // Pin where the DHT22 is connected
-#define DHTTYPE DHT11 // DHT 22 (AM2302)
+#define DHTPIN A0     // Pin where the DHT22 is connected
+#define DHTTYPE DHT11 // DHT 11
 
 // Create a DHT object
 DHT dht(DHTPIN, DHTTYPE);
 
 const byte SEGMENTS  = 7;    // Number of segments (A to G)
-const byte DIGITS    = 3;    // Number of displays used (three at the moment)
+const byte DIGITS    = 2;    // Number of displays used (three at the moment)
 const byte Refresh   = 1;    // Number of millis changes between segments (lower means faster refresh rate)
 
-const byte SEGApin = 53;
-const byte SEGBpin = 52;
-const byte SEGCpin = 51;
-const byte SEGDpin = 50;
-const byte SEGEpin = 10;
-const byte SEGFpin = 11;
-const byte SEGGpin = 12;
+const byte SEGApin = 37;
+const byte SEGBpin = 36;
+const byte SEGCpin = 35;
+const byte SEGDpin = 34;
+const byte SEGEpin = 33;
+const byte SEGFpin = 32;
+const byte SEGGpin = 31;
 
 // Array to address the segment pins in A-G sequence
 byte SEGARRAY[]  = {SEGApin, SEGBpin, SEGCpin, SEGDpin, SEGEpin, SEGFpin, SEGGpin};
 
 // Define pins used by common anodes or common cathodes for each digit
-const byte CACC0pin  = A13;   // First digit
-const byte CACC1pin  = A14;   // Second digit
-const byte CACC2pin  = A15;   // Third digit
+const byte CACC0pin  = A11;   // First digit
+const byte CACC1pin  = A12;   // Second digit
+//const byte CACC2pin  = A15;   // Third digit
 
 // Array allows using any number of digits - now 3 digits
-byte  CACCpin[]   = {CACC0pin, CACC1pin, CACC2pin};    // The digit's pin number
+byte  CACCpin[]   = {CACC0pin, CACC1pin};    // The digit's pin number
 byte  DIGIT[DIGITS];                                   // Array to store the current displayed character
 
 // Definitions for common cathode displays (adjusted for COMMON CATHODE)
@@ -96,18 +96,16 @@ void loop() {
   
   //int tempInt = (int)dhtTemp;
 
-  int hundreds = tempInt / 100;         // Hundreds digit
   int tens = (tempInt / 10) % 10;       // Tens digit
   int ones = tempInt % 10;              // Ones digit
 
   // Handle cases where the temperature is below 100
-  if (hundreds > 9) {
-      hundreds = 9; // Clamp hundreds to max of 9
+  if (tens > 9) {
+      tens = 9; // Clamp hundreds to max of 9
   }
   
-  DIGIT[0] = charArray[hundreds];
-  DIGIT[1] = charArray[tens];
-  DIGIT[2] = charArray[ones];
+  DIGIT[0] = charArray[tens];
+  DIGIT[1] = charArray[ones];
 
   CURmillis = millis();
   if (CURmillis != PREVmillis) {
