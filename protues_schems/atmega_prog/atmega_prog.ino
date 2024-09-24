@@ -49,10 +49,14 @@ byte SEGCOUNT = SEGMENTS - 1, CURSEG = bit(SEGMENTS - 1);
 byte milliCount = 0;
 
 const int tmp36Pin = A1;
+const int mq135Pin = A2;
+const int mq135Out = A10;
 
 void setup() {
   // Initialize DHT11 sensor
   dht.begin();
+  pinMode(mq135Pin, INPUT);
+  pinMode(mq135Out, OUTPUT);
 
   // for TMP36 display segments
   for (byte i = 0; i < SEGMENTS; i++) {
@@ -79,6 +83,8 @@ void loop() {
   displayTemperatureTMP36();
   
   displayHumidityDHT11();
+
+  displayAirQualityMQ135();
   
   refreshDisplay();
 }
@@ -107,6 +113,17 @@ void displayHumidityDHT11() {
 
   humDIGIT[0] = charArray[(humidity / 10) % 10];  // tens
   humDIGIT[1] = charArray[humidity % 10];         // ones
+}
+
+// Display air quality indicator from MQ135 sensor
+void displayAirQualityMQ135() {
+  bool air_quality = digitalRead(mq135Pin);
+
+  if(air_quality){
+    digitalWrite(mq135Out, HIGH);
+  } else {
+    digitalWrite(mq135Out, LOW);
+  }
 }
 
 // Multiplexing 7-segments to refresh displays
