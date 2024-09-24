@@ -1,34 +1,37 @@
+#include <DHT.h>
+
+#define DHTPIN A0
+#define DHTTYPE DHT11
+DHT dht(DHTPIN, DHTTYPE);
+
 const byte SEGMENTS  = 7;    // Number of segments (A to G)
-const byte DIGITS    = 3;    // Number of displays used (three at the moment)
-const byte Refresh   = 1;    // Number of millis changes between segments (lower means faster refresh rate)
+const byte Refresh   = 1;    // Refresh rate (the lower the faster)
 
-const byte SEGApin = 53;
-const byte SEGBpin = 52;
-const byte SEGCpin = 51;
-const byte SEGDpin = 50;
-const byte SEGEpin = 10;
-const byte SEGFpin = 11;
-const byte SEGGpin = 12;
+// TMP36 display (3 digits or 7segments)
+const byte tmpSEGApin = 53;
+const byte tmpSEGBpin = 52;
+const byte tmpSEGCpin = 51;
+const byte tmpSEGDpin = 50;
+const byte tmpSEGEpin = 10;
+const byte tmpSEGFpin = 11;
+const byte tmpSEGGpin = 12;
+byte tmpSEGARRAY[]  = {tmpSEGApin, tmpSEGBpin, tmpSEGCpin, tmpSEGDpin, tmpSEGEpin, tmpSEGFpin, tmpSEGGpin};
+const byte tmpCACCpin[] = {A13, A14, A15};  // Pins for TMP36 display digits (left to right)
+byte tmpDIGIT[3];  // Store the characters to display temperature
 
-// Array to address the segment pins in A-G sequence
-byte SEGARRAY[]  = {SEGApin, SEGBpin, SEGCpin, SEGDpin, SEGEpin, SEGFpin, SEGGpin};
+// DHT11 display (2 digits or 7segments)
+const byte humSEGApin = 37;
+const byte humSEGBpin = 36;
+const byte humSEGCpin = 35;
+const byte humSEGDpin = 34;
+const byte humSEGEpin = 33;
+const byte humSEGFpin = 32;
+const byte humSEGGpin = 31;
+byte humSEGARRAY[]  = {humSEGApin, humSEGBpin, humSEGCpin, humSEGDpin, humSEGEpin, humSEGFpin, humSEGGpin};
+const byte humCACCpin[] = {A11, A12};  // Pins for DHT11 display digits (left to right)
+byte humDIGIT[2];  // Store the characters to display humidity
 
-// Define pins used by common anodes or common cathodes for each digit
-const byte CACC0pin  = A13;   // First digit (leftmost 7seg)
-const byte CACC1pin  = A14;   // Second digit
-const byte CACC2pin  = A15;   // Third digit (rightmost 7seg)
-
-// Array allows using any number of digits - now 3 digits
-byte  CACCpin[]   = {CACC0pin, CACC1pin, CACC2pin};    // The digit's pin number
-byte  DIGIT[DIGITS];                                   // Array to store the current displayed character
-
-// Definitions for common cathode displays (adjusted for COMMON CATHODE)
-const byte SEGON     = HIGH;
-const byte SEGOFF    = LOW;
-const byte CACCON    = LOW;
-const byte CACCOFF   = HIGH;
-
-// Segment bit definitions
+// Segment patterns for digits 0-9
 const byte segA  = bit(0);
 const byte segB  = bit(1);
 const byte segC  = bit(2);
@@ -36,112 +39,111 @@ const byte segD  = bit(3);
 const byte segE  = bit(4);
 const byte segF  = bit(5);
 const byte segG  = bit(6);
+const byte charArray[] = {segA + segB + segC + segD + segE + segF, segB + segC, segA + segB + segD + segE + segG,
+                          segA + segB + segC + segD + segG, segB + segC + segF + segG, segA + segC + segD + segF + segG,
+                          segA + segC + segD + segE + segF + segG, segA + segB + segC, segA + segB + segC + segD + segE + segF + segG,
+                          segA + segB + segC + segD + segF + segG};
 
-// Segment patterns for digits 0-9
-const byte char0 = segA + segB + segC + segD + segE + segF;
-const byte char1 = segB + segC;
-const byte char2 = segA + segB + segD + segE + segG;
-const byte char3 = segA + segB + segC + segD + segG;
-const byte char4 = segB + segC + segF + segG;
-const byte char5 = segA + segC + segD + segF + segG;
-const byte char6 = segA + segC + segD + segE + segF + segG;
-const byte char7 = segA + segB + segC;
-const byte char8 = segA + segB + segC + segD + segE + segF + segG;
-const byte char9 = segA + segB + segC + segD + segF + segG;
+unsigned long PREVmillis = 0, CURmillis = 0;
+byte SEGCOUNT = SEGMENTS - 1, CURSEG = bit(SEGMENTS - 1);
+byte milliCount = 0;
 
-// Array that maps values 0-9 to their corresponding segment patterns
-byte charArray[] = {char0, char1, char2, char3, char4, char5, char6, char7, char8, char9};
-
-// Variables for refresh timing and segment control
-unsigned long PREVmillis;
-unsigned long CURmillis;
-byte SEGCOUNT;  // Segment counter - count up to SEGMENTS value
-byte CURSEG;    // Current segment bit position
-byte milliCount = 0; // Number of millis changes so far
-byte i;         // Loop index for iterating over digits
-
-const int lm35Pin = A0;
-int tmp36Pin = A1;
+const int tmp36Pin = A1;
 
 void setup() {
-  pinMode(tmp36Pin, INPUT);
-  // Initialize segment pins as OUTPUT, set to off
-  for(i = 0; i < SEGMENTS; ++i) {
-    pinMode(SEGARRAY[i], OUTPUT);
-    digitalWrite(SEGARRAY[i], SEGOFF);
+  // Initialize DHT11 sensor
+  dht.begin();
+
+  // for TMP36 display segments
+  for (byte i = 0; i < SEGMENTS; i++) {
+    pinMode(tmpSEGARRAY[i], OUTPUT);
+    digitalWrite(tmpSEGARRAY[i], LOW);
+  }
+  for (byte i = 0; i < 3; i++) {
+    pinMode(tmpCACCpin[i], OUTPUT);
+    digitalWrite(tmpCACCpin[i], HIGH);  // Common cathode off
   }
 
-  // Initialize digit pins as OUTPUT, set to off
-  for(i = 0; i < DIGITS; ++i) {
-    pinMode(CACCpin[i], OUTPUT);
-    digitalWrite(CACCpin[i], CACCOFF);
+  // for DHT11 display segments
+  for (byte i = 0; i < SEGMENTS; i++) {
+    pinMode(humSEGARRAY[i], OUTPUT);
+    digitalWrite(humSEGARRAY[i], LOW);
   }
-
-  // Initialize all digits to 0
-  for(i = 0; i < DIGITS; ++i) {
-    DIGIT[i] = char0;
+  for (byte i = 0; i < 2; i++) {
+    pinMode(humCACCpin[i], OUTPUT);
+    digitalWrite(humCACCpin[i], HIGH);  // Common cathode off
   }
-
-  SEGCOUNT = SEGMENTS - 1;
-  CURSEG = bit(SEGMENTS - 1);
-  PREVmillis = millis();
 }
 
 void loop() {
+  displayTemperatureTMP36();
+  
+  displayHumidityDHT11();
+  
+  refreshDisplay();
+}
+
+// Display temperature from TMP36 sensor
+void displayTemperatureTMP36() {
   int tmp36Value = analogRead(tmp36Pin);
-  float voltage = tmp36Value * (5.025 / 1024.0);
-  float temperature = (voltage - 0.5) * 100;
-  
+  float voltage = tmp36Value * (5.025 / 1024.0);  // TMP36 analog output to standardized voltage
+  float temperature = (voltage - 0.5) * 100;     // TMP36 to degrees celsius
+
   if (temperature < 0) {
-    DIGIT[0] = segG;
-    temperature = -(temperature - 1);  // Absolute value
-  } else if (temperature >= 100) {
-    DIGIT[0] = charArray[((int)temperature) / 100];
+    tmpDIGIT[0] = segG;  // Negative sign
+    temperature = -(temperature - 1);  // Convert to positive for display
   } else {
-    DIGIT[0] = 0;
+    tmpDIGIT[0] = (temperature >= 100) ? charArray[(int)temperature / 100] : 0;  // Handle 100+
   }
 
-  // Convert temperature to integer and extract digits by tens and ones
   int tempInt = (int)temperature;
-  int tens = (tempInt / 10) % 10;       // tens digit
-  int ones = tempInt % 10;              // ones digit
+  tmpDIGIT[1] = charArray[(tempInt / 10) % 10];  // Tens
+  tmpDIGIT[2] = charArray[tempInt % 10];         // Ones
+}
 
-  // Set the digit values for the tens and ones positions
-  DIGIT[1] = charArray[tens];
-  DIGIT[2] = charArray[ones];
+// Display humidity from DHT11 sensor
+void displayHumidityDHT11() {
+  int humidity = (int)dht.readHumidity();
 
-  // Refresh the 7-segment display
+  humDIGIT[0] = charArray[(humidity / 10) % 10];  // tens
+  humDIGIT[1] = charArray[humidity % 10];         // ones
+}
+
+// Multiplexing 7-segments to refresh displays
+void refreshDisplay() {
   CURmillis = millis();
-  if (CURmillis != PREVmillis) {
-    milliCount++;
+  if (CURmillis - PREVmillis >= Refresh) {
     PREVmillis = CURmillis;
-  }
-  
-  if (milliCount == Refresh) {
-    milliCount = 0;
+    milliCount++;
 
-    // Turn the current segment OFF before updating
-    digitalWrite(SEGARRAY[SEGCOUNT], SEGOFF);
+    // cycle through the segments
+    digitalWrite(tmpSEGARRAY[SEGCOUNT], LOW);
+    digitalWrite(humSEGARRAY[SEGCOUNT], LOW);
 
-    // Move to the next segment
-    CURSEG = CURSEG << 1;
+    CURSEG <<= 1;
     SEGCOUNT++;
     if (SEGCOUNT == SEGMENTS) {
       SEGCOUNT = 0;
       CURSEG = 1;
     }
 
-    // Update the digit pins based on the current segment pattern
-    for(i = 0; i < DIGITS; ++i) {
-      if (DIGIT[i] & CURSEG) {
-        digitalWrite(CACCpin[i], CACCON);
-      } else {
-        digitalWrite(CACCpin[i], CACCOFF);
+    // update TMP36 display readings
+    for (byte i = 0; i < 3; i++) {
+      digitalWrite(tmpCACCpin[i], HIGH);
+      if (tmpDIGIT[i] & CURSEG) {
+        digitalWrite(tmpCACCpin[i], LOW);  // Activate digit for common cathode
       }
     }
 
-    // Turn the new segment ON
-    digitalWrite(SEGARRAY[SEGCOUNT], SEGON);
+    // Update DHT11 display
+    for (byte i = 0; i < 2; i++) {
+      digitalWrite(humCACCpin[i], HIGH);
+      if (humDIGIT[i] & CURSEG) {
+        digitalWrite(humCACCpin[i], LOW);  // Activate digit for common cathode
+      }
+    }
+
+    digitalWrite(tmpSEGARRAY[SEGCOUNT], HIGH);  // Turn on a segment for temperature display
+    digitalWrite(humSEGARRAY[SEGCOUNT], HIGH);  // Turn on a segment for humidity display
   }
 }
-
