@@ -52,11 +52,20 @@ const int tmp36Pin = A1;
 const int mq135Pin = A2;
 const int mq135Out = A10;
 
+const int setTempPin = 2;
+const int tempKnobPin = A3;
+
+int tempThreshold = 0;  // Default threshold value set for temperature
+
 void setup() {
   // Initialize DHT11 sensor
   dht.begin();
+
   pinMode(mq135Pin, INPUT);
   pinMode(mq135Out, OUTPUT);
+
+  pinMode(setTempPin, INPUT);
+  pinMode(tempKnobPin, INPUT);
 
   // for TMP36 display segments
   for (byte i = 0; i < SEGMENTS; i++) {
@@ -91,20 +100,38 @@ void loop() {
 
 // Display temperature from TMP36 sensor
 void displayTemperatureTMP36() {
-  int tmp36Value = analogRead(tmp36Pin);
-  float voltage = tmp36Value * (5.025 / 1024.0);  // TMP36 analog output to standardized voltage
-  float temperature = (voltage - 0.5) * 100;     // TMP36 to degrees celsius
+  int setTempThreshold = digitalRead(setTempPin);
 
-  if (temperature < 0) {
-    tmpDIGIT[0] = segG;  // Negative sign
-    temperature = -(temperature - 1);  // Convert to positive for display
+  if (setTempThreshold == LOW) {
+    int tmp36Value = analogRead(tmp36Pin);
+    float voltage = tmp36Value * (5.025 / 1024.0);  // TMP36 analog output to standardized voltage
+    float temperature = (voltage - 0.5) * 100;     // TMP36 to degrees celsius
+
+    if (temperature < 0) {
+      tmpDIGIT[0] = segG;  // Negative sign
+      temperature = -(temperature - 1);  // Convert to positive for display
+    } else {
+      tmpDIGIT[0] = (temperature >= 100) ? charArray[(int)temperature / 100] : 0;  // Handle 100+
+    }
+
+    int tempInt = (int)temperature;
+    tmpDIGIT[1] = charArray[(tempInt / 10) % 10];  // Tens
+    tmpDIGIT[2] = charArray[tempInt % 10];         // Ones
   } else {
-    tmpDIGIT[0] = (temperature >= 100) ? charArray[(int)temperature / 100] : 0;  // Handle 100+
-  }
+    int knobValue = analogRead(tempKnobPin);
+    int mapValue = map(knobValue, 0, 1023, 0, 125);
 
-  int tempInt = (int)temperature;
-  tmpDIGIT[1] = charArray[(tempInt / 10) % 10];  // Tens
-  tmpDIGIT[2] = charArray[tempInt % 10];         // Ones
+    int tempThreshold = mapValue;   // Store or save the set temperature threshold
+
+    int hundreds = mapValue / 100;
+    int tens = (mapValue / 10) % 10;
+    int ones = mapValue % 10;
+
+    tmpDIGIT[0] = (hundreds > 0) ? charArray[hundreds] : 0;  // Display hundreds only if > 0
+    tmpDIGIT[1] = charArray[tens];
+    tmpDIGIT[2] = charArray[ones];
+  }
+  
 }
 
 // Display humidity from DHT11 sensor
