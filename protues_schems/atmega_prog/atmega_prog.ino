@@ -49,11 +49,8 @@ byte SEGCOUNT = SEGMENTS - 1, CURSEG = bit(SEGMENTS - 1);
 byte milliCount = 0;
 
 const int tmp36Pin = A1;
-const int mq135Pin = A2;
-const int mq135Out = A10;
 
 const int setTempPin = 2;
-const int tempKnobPin = A3;
 
 int tempThreshold = 0;  // Default threshold value set for temperature
 
@@ -61,11 +58,7 @@ void setup() {
   // Initialize DHT11 sensor
   dht.begin();
 
-  pinMode(mq135Pin, INPUT);
-  pinMode(mq135Out, OUTPUT);
-
   pinMode(setTempPin, INPUT);
-  pinMode(tempKnobPin, INPUT);
 
   // for TMP36 display segments
   for (byte i = 0; i < SEGMENTS; i++) {
@@ -92,8 +85,6 @@ void loop() {
   displayTemperatureTMP36();
   
   displayHumidityDHT11();
-
-  displayAirQualityMQ135();
   
   refreshDisplay();
 }
@@ -118,18 +109,15 @@ void displayTemperatureTMP36() {
     tmpDIGIT[1] = charArray[(tempInt / 10) % 10];  // Tens
     tmpDIGIT[2] = charArray[tempInt % 10];         // Ones
   } else {
-    int knobValue = analogRead(tempKnobPin);
-    int mapValue = map(knobValue, 0, 1023, 0, 125);
+    if (tempThreshold < 0) {
+      tmpDIGIT[0] = segG;  // Negative sign
+      tempThreshold = -(tempThreshold - 1);  // Convert to positive for display
+    } else {
+      tmpDIGIT[0] = (tempThreshold >= 100) ? charArray[(int)tempThreshold / 100] : 0;  // Handle 100+
+    }
 
-    int tempThreshold = mapValue;   // Store or save the set temperature threshold
-
-    int hundreds = mapValue / 100;
-    int tens = (mapValue / 10) % 10;
-    int ones = mapValue % 10;
-
-    tmpDIGIT[0] = (hundreds > 0) ? charArray[hundreds] : 0;  // Display hundreds only if > 0
-    tmpDIGIT[1] = charArray[tens];
-    tmpDIGIT[2] = charArray[ones];
+    tmpDIGIT[1] = charArray[(tempThreshold / 10) % 10];
+    tmpDIGIT[2] = charArray[tempThreshold % 10];
   }
   
 }
@@ -140,17 +128,6 @@ void displayHumidityDHT11() {
 
   humDIGIT[0] = charArray[(humidity / 10) % 10];  // tens
   humDIGIT[1] = charArray[humidity % 10];         // ones
-}
-
-// Display air quality indicator from MQ135 sensor
-void displayAirQualityMQ135() {
-  bool air_quality = digitalRead(mq135Pin);
-
-  if(air_quality){
-    digitalWrite(mq135Out, HIGH);
-  } else {
-    digitalWrite(mq135Out, LOW);
-  }
 }
 
 // Multiplexing 7-segments to refresh displays
