@@ -190,11 +190,11 @@ void controlLEDs() {
 
   // Control blue and red LEDs for temperature
   if (temperature <= tempThreshold) {
-    digitalWrite(blueLED, HIGH);  // Blue LED on
-    digitalWrite(redLED, LOW);    // Red LED off
+    digitalWrite(blueLED, HIGH);
+    digitalWrite(redLED, LOW);
   } else {
-    digitalWrite(blueLED, LOW);   // Blue LED off
-    digitalWrite(redLED, HIGH);   // Red LED on
+    digitalWrite(blueLED, LOW);
+    digitalWrite(redLED, HIGH);
   }
 
   // Read current humidity
@@ -207,11 +207,11 @@ void controlLEDs() {
 
   // Control green and orange LEDs for humidity
   if (humidity <= humThreshold) {
-    digitalWrite(greenLED, HIGH);  // Green LED on
-    digitalWrite(orangeLED, LOW);  // Orange LED off
+    digitalWrite(greenLED, HIGH); 
+    digitalWrite(orangeLED, LOW);
   } else {
-    digitalWrite(greenLED, LOW);   // Green LED off
-    digitalWrite(orangeLED, HIGH); // Orange LED on
+    digitalWrite(greenLED, LOW);
+    digitalWrite(orangeLED, HIGH);
   }
 }
 
