@@ -1,6 +1,6 @@
 #include <DHT.h>
 
-#define DHTPIN A0
+#define DHTPIN A1
 #define DHTTYPE DHT11
 DHT dht(DHTPIN, DHTTYPE);
 
@@ -9,7 +9,7 @@ const byte Refresh   = 1;    // Refresh rate
 
 // TMP36 display (3 digits)
 const byte tmpSEGApin = 53;
-const byte tmpSEGBpin = 52;
+const byte tmpSEGBpin = 21;
 const byte tmpSEGCpin = 51;
 const byte tmpSEGDpin = 50;
 const byte tmpSEGEpin = 10;
@@ -51,7 +51,7 @@ unsigned long PREVmillis = 0, CURmillis = 0;
 byte SEGCOUNT = SEGMENTS - 1, CURSEG = bit(SEGMENTS - 1);
 byte milliCount = 0;
 
-const int tmp36Pin = A1;
+const int tmp36Pin = A0;
 const int setThresholdPin = A2;
 
 // BCD pins for temperature threshold
