@@ -5,7 +5,7 @@
 DHT dht(DHTPIN, DHTTYPE);
 
 const byte SEGMENTS  = 7;    // Number of segments (A to G)
-const byte Refresh   = 1;    // Refresh rate
+const byte Refresh   = 2;    // Refresh rate
 
 // TMP36 display (3 digits)
 const byte tmpSEGApin = 53;
