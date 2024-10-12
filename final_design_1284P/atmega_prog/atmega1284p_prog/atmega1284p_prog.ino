@@ -1,116 +1,178 @@
+#include <OneWire.h>
+#include <DallasTemperature.h>
 #include <DHT.h>
-#include <ShiftRegister74HC595.h>  // Library for shift register control
 
-// DHT11 setup for humidity readings
-#define DHTPIN A1
+#define ONE_WIRE_BUS A0
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
+DeviceAddress insideThermometer;
+
+#define DHTPIN A1  // DHT11 data pin connected to A1
 #define DHTTYPE DHT11
 DHT dht(DHTPIN, DHTTYPE);
 
-// Shift register pins for 7-segment display control
-ShiftRegister74HC595<1> sr(1, 0, 2);  // DS (Data), SH_CP (Clock), ST_CP (Latch)
+// Pins for controlling the 74HC595 shift register
+const int latchPin = 2;   // Pin connected to ST_CP of 74HC595
+const int clockPin = 0;   // Pin connected to SH_CP of 74HC595
+const int dataPin = 1;    // Pin connected to DS of 74HC595
 
-// Constants for segment patterns (A to G)
-const byte segA = bit(0), segB = bit(1), segC = bit(2), segD = bit(3), segE = bit(4), segF = bit(5), segG = bit(6);
-const byte charArray[] = {
-  segA + segB + segC + segD + segE + segF,  // 0
-  segB + segC,                              // 1
-  segA + segB + segD + segE + segG,         // 2
-  segA + segB + segC + segD + segG,         // 3
-  segB + segC + segF + segG,                // 4
-  segA + segC + segD + segF + segG,         // 5
-  segA + segC + segD + segE + segF + segG,  // 6
-  segA + segB + segC,                       // 7
-  segA + segB + segC + segD + segE + segF + segG, // 8
-  segA + segB + segC + segD + segF + segG   // 9
+// Pins for digit selection (common cathodes for 5 digits)
+const int digitPins[5] = {3, 4, 5, 6, 7};  // Pins to control the 5 common cathodes of the displays
+
+// Seven-segment digit patterns for common cathode displays
+const byte digit[12] = {
+  B11000000, // 0
+  B11111001, // 1
+  B10100100, // 2
+  B10110000, // 3
+  B10011001, // 4
+  B10010010, // 5
+  B10000010, // 6
+  B11111000, // 7
+  B10000000, // 8
+  B10010000, // 9
+  B11111111, // Blank
+  B10111111  // '-' (minus sign)
 };
 
-// Pin definitions for controlling digit select (common cathode)
-const byte tmpDigits[] = {3, 4, 5}; // Pins for temperature digits
-const byte humDigits[] = {6, 7};     // Pins for humidity digits
+// Variables for handling the display
+int digitBuffer[5] = {10, 0, 0, 0, 0};  // Buffer to store values to display (default blank)
+int digitScan = 0;  // Keeps track of which digit is being displayed
+int soft_scaler = 0;  // Scaler for controlling the refresh rate
+float tempC;  // Temperature in Celsius
+int tmp;  // Temperature value to display
+float humidity;  // Humidity percentage
+int hum;  // Humidity value to display
+boolean sign = false;  // Indicates if the temperature is negative
 
-// LED pins
-const int blueLED = 28, redLED = 29, orangeLED = 30, greenLED = 31;
+// LED and threshold pin configurations
+const int setThresholdPin = A2;
+const int blueLED = 6;
+const int redLED = 7;
+const int orangeLED = 8;
+const int greenLED = 9;
 
-// BCD pins for temperature and humidity threshold
-const int tempOnesPins[] = {8, 9, 10, 11};  // BCD ones for temperature
-const int tempTensPins[] = {12, 13, 14, LOW};  // BCD tens for temperature
-const int tempSignPin = 15;                   // Sign bit for temperature threshold
-const int humOnesPins[] = {16, 17, 18, 19};       // BCD ones for humidity
-const int humTensPins[] = {20, 21, 22, 23};   // BCD tens for humidity
-
-unsigned long prevMillis = 0, curMillis = 0;
-const byte Refresh = 2;  // Refresh rate for multiplexing
+// BCD threshold pins
+const int tempOnesPins[] = {8, 9, 10, 11};
+const int tempTensPins[] = {12, 13, 14, LOW};
+const int tempSignPin = 15;
+const int humOnesPins[] = {16, 17, 18, 19};
+const int humTensPins[] = {20, 21, 22, 23};
 
 void setup() {
-  dht.begin();  // Initialize DHT11 for humidity readings
-  
-  // Set digit control pins as outputs
-  for (byte i = 0; i < 3; i++) pinMode(tmpDigits[i], OUTPUT);  // Temp digit control
-  for (byte i = 0; i < 2; i++) pinMode(humDigits[i], OUTPUT);  // Humidity digit control
+  // Initialize temperature sensor and DHT11
+  sensors.begin();
+  sensors.getAddress(insideThermometer, 0);
+  dht.begin();  // Initialize DHT11 sensor
 
-  // Set LED pins as outputs
+  // Setup shift register and digit control pins
+  pinMode(latchPin, OUTPUT);
+  pinMode(clockPin, OUTPUT);
+  pinMode(dataPin, OUTPUT);
+  
+  for (int i = 0; i < 5; i++) {
+    pinMode(digitPins[i], OUTPUT);
+    digitalWrite(digitPins[i], HIGH);  // Start with all digits off (common cathode)
+  }
+
+  // Set up Timer2 for refreshing the display
+  TCCR2A = 0;
+  TCCR2B = (1 << CS21);  // Prescaler of 8
+  TIMSK2 = (1 << TOIE2);  // Enable overflow interrupt
+  TCNT2 = 0;
+
+  pinMode(setThresholdPin, INPUT);
+
+  // LED setup
   pinMode(blueLED, OUTPUT);
   pinMode(redLED, OUTPUT);
   pinMode(orangeLED, OUTPUT);
   pinMode(greenLED, OUTPUT);
-  
-  // Set BCD input pins for temperature and humidity thresholds
-  for (int i = 0; i < 4; i++) {
-    pinMode(tempOnesPins[i], INPUT);
-    pinMode(tempTensPins[i], INPUT);
-    pinMode(humOnesPins[i], INPUT);
-    pinMode(humTensPins[i], INPUT);
+}
+
+ISR(TIMER2_OVF_vect) {
+  soft_scaler++;
+  if (soft_scaler == 15) {
+    refreshDisplay();
+    soft_scaler = 0;
   }
-  pinMode(tempSignPin, INPUT);
+}
+
+void refreshDisplay() {
+  // Turn off all digits (set common cathodes HIGH)
+  for (byte i = 0; i < 5; i++) {
+    digitalWrite(digitPins[i], HIGH);
+  }
+
+  // Prepare to send segment data to the shift register
+  digitalWrite(latchPin, LOW);  // Latch low to start shifting data
+  shiftOut(dataPin, clockPin, MSBFIRST, ~digit[digitBuffer[digitScan]]);  // Shift out segment data (active high for common cathode)
+  digitalWrite(latchPin, HIGH);  // Latch high to store data in the shift register
+
+  // Enable the current digit (set common cathode LOW)
+  digitalWrite(digitPins[digitScan], LOW);
+
+  // Move to the next digit for the next refresh cycle
+  digitScan++;
+  if (digitScan >= 5) {
+    digitScan = 0;
+  }
 }
 
 void loop() {
-  if (digitalRead(A0) == HIGH) {
+  // Check if the threshold switch is on
+  if (digitalRead(setThresholdPin) == HIGH) {
     displaySetThreshold();
   } else {
     displayTemperature();
     displayHumidity();
-    controlLEDs();
+    controlLEDOutputs();  // Control LEDs based on sensor readings and thresholds
   }
 
-  refreshDisplay();
+  // Let the timer handle multiplexing, no need for a delay here
 }
 
-// Display the temperature from TMP36 sensor using the 7-segment display
+// Display temperature from DS18B20 sensor
 void displayTemperature() {
-  float temperature = getTemperature();
-  displayDigits(temperature, tmpDigits, 3);
-}
+  sensors.requestTemperatures();
+  tempC = sensors.getTempC(insideThermometer);
+  tmp = int(tempC);  // Multiply by 10 to display one decimal point
 
-// Display the humidity from the DHT11 sensor using the 7-segment display
-void displayHumidity() {
-  int humidity = (int)dht.readHumidity();
-  displayDigits(humidity, humDigits, 2);
-}
-
-// Display a floating-point number on a set of 7-segment displays
-void displayDigits(float value, const byte* digits, int length) {
-  int intValue = (int)value;  // Convert to integer for display
-  for (int i = 0; i < length; i++) {
-    digitalWrite(digits[i], LOW);
-    sr.setAll(charArray[(intValue / (int)pow(10, length - i - 1)) % 10]);
-    digitalWrite(digits[i], HIGH);
-    delay(5); // Small delay for multiplexing
+  if (tempC < 0) {
+    sign = true;
+    tmp = abs(tmp);  // Take absolute value for display
+  } else {
+    sign = false;
   }
+
+  // Fill digit buffer for temperature display
+  digitBuffer[2] = tmp % 10;  // Ones place
+  digitBuffer[1] = (tmp / 10) % 10;  // Tens place
+  digitBuffer[0] = sign ? 11 : 10;  // Display '-' for negative, blank for positive
 }
 
-// Control LEDs based on the current temperature and humidity readings against thresholds
-void controlLEDs() {
-  float temperature = getTemperature();
-  
+// Display humidity from DHT11 sensor
+void displayHumidity() {
+  humidity = dht.readHumidity();
+  hum = int(humidity);
+
+  // Fill digit buffer for humidity display
+  digitBuffer[4] = hum % 10;  // Ones place
+  digitBuffer[3] = (hum / 10) % 10;  // Tens place
+}
+
+// Control LEDs based on temperature and humidity thresholds
+void controlLEDOutputs() {
   // Read temperature threshold
-  int tempThreshold = (readBCD(tempTensPins) * 10) + readBCD(tempOnesPins);
+  int tempOnes = readBCD(tempOnesPins);
+  int tempTens = readBCD(tempTensPins);
+  int tempThreshold = (tempTens * 10) + tempOnes;
   if (digitalRead(tempSignPin) == HIGH) {
-    tempThreshold = -tempThreshold;  // Apply negative sign
+    tempThreshold = -tempThreshold;
   }
 
   // Control blue and red LEDs for temperature
-  if (temperature <= tempThreshold) {
+  if (tempC <= tempThreshold) {
     digitalWrite(blueLED, HIGH);
     digitalWrite(redLED, LOW);
   } else {
@@ -119,12 +181,13 @@ void controlLEDs() {
   }
 
   // Read humidity threshold
-  int humidity = (int)dht.readHumidity();
-  int humThreshold = (readBCD(humTensPins) * 10) + readBCD(humOnesPins);
+  int humOnes = readBCD(humOnesPins);
+  int humTens = readBCD(humTensPins);
+  int humThreshold = (humTens * 10) + humOnes;
 
   // Control green and orange LEDs for humidity
   if (humidity <= humThreshold) {
-    digitalWrite(greenLED, HIGH);
+    digitalWrite(greenLED, HIGH); 
     digitalWrite(orangeLED, LOW);
   } else {
     digitalWrite(greenLED, LOW);
@@ -132,50 +195,32 @@ void controlLEDs() {
   }
 }
 
-// Display the temperature and humidity threshold set by the user
+// Display set threshold for temperature and humidity
 void displaySetThreshold() {
-  // Display temperature threshold
+  // Read temperature threshold
   int tempOnes = readBCD(tempOnesPins);
   int tempTens = readBCD(tempTensPins);
   int tempSign = digitalRead(tempSignPin);
 
-  if (tempSign == HIGH) {
-    sr.setAll(segG);  // Display negative sign
-  }
-  
-  displayDigits(tempTens * 10 + tempOnes, tmpDigits, 3);
+  // Display temperature threshold
+  digitBuffer[0] = (tempSign == HIGH) ? 11 : 10;  // '-' for negative sign
+  digitBuffer[1] = tempTens;
+  digitBuffer[2] = tempOnes;
 
-  // Display humidity threshold
+  // Read humidity threshold
   int humOnes = readBCD(humOnesPins);
   int humTens = readBCD(humTensPins);
 
-  displayDigits(humTens * 10 + humOnes, humDigits, 2);
+  // Display humidity threshold
+  digitBuffer[3] = humTens;
+  digitBuffer[4] = humOnes;
 }
 
-// Refresh the display for multiplexing 7-segments via shift registers
-void refreshDisplay() {
-  curMillis = millis();
-  if (curMillis - prevMillis >= Refresh) {
-    prevMillis = curMillis;
-    
-    // Cycle through the temperature and humidity segments
-    for (byte i = 0; i < 3; i++) digitalWrite(tmpDigits[i], HIGH);  // Turn off all temp digits
-    for (byte i = 0; i < 2; i++) digitalWrite(humDigits[i], HIGH);  // Turn off all hum digits
-  }
-}
-
-// Helper function to read BCD value from pins
+// Read BCD value from a set of pins
 int readBCD(const int pins[4]) {
   int value = 0;
   for (int i = 0; i < 4; i++) {
     value |= digitalRead(pins[i]) << i;
   }
   return value;
-}
-
-// Retrieve temperature from the TMP36 sensor
-float getTemperature() {
-  int tmp36Value = analogRead(A0);
-  float voltage = tmp36Value * (5.025 / 1024.0);
-  return (voltage - 0.5) * 100;  // Convert voltage to temperature in Celsius
 }
